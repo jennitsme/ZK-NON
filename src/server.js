@@ -7,23 +7,45 @@ import { pool, initDb } from "./db.js";
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// --- Middleware ---
-app.use(cors({ origin: "*"})); // bisa dibatasi ke domain frontend kamu
+// ---------- CORS CONFIG ----------
+const allowedOrigins = [
+  "https://tnemyap.app",
+  "https://zknon.com"
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // allow non-browser tools (curl, health checks) where origin is undefined
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+
+// ---------- MIDDLEWARE ----------
 app.use(express.json());
 
-// --- Helpers ---
+// ---------- HELPERS ----------
 
 function sha256Hex(str) {
   return crypto.createHash("sha256").update(str).digest("hex");
 }
 
-// Convert NUMERIC string dari Postgres ke number JS (ok buat UI, bukan untuk akuntansi super presisi)
+// simple numeric conversion, good enough for UI
 function toNumber(val) {
   if (val === null || val === undefined) return 0;
   return parseFloat(val);
 }
 
-// --- Routes ---
+// ---------- ROUTES ----------
 
 // Health check
 app.get("/health", (req, res) => {
@@ -42,11 +64,11 @@ app.post("/api/zkproofs/generate", async (req, res) => {
       return res.status(400).json({ error: "walletPubkey is required" });
     }
 
-    // secret note (disimpan oleh user)
+    // secret note user keeps
     const note = crypto.randomBytes(32).toString("hex");
     const noteHash = sha256Hex(note);
 
-    // commitment: hash(wallet + noteHash)
+    // commitment = hash(walletPubkey + ":" + noteHash)
     const rawCommit = `${walletPubkey}:${noteHash}`;
     const commitHash = sha256Hex(rawCommit);
     const zkProofId = "ZKP-" + commitHash.slice(0, 16).toUpperCase();
@@ -122,7 +144,9 @@ app.post("/api/deposits", async (req, res) => {
 
     const amt = Number(amount);
     if (!walletPubkey || !zkProofId || !amt || amt <= 0) {
-      return res.status(400).json({ error: "walletPubkey, zkProofId and positive amount are required" });
+      return res
+        .status(400)
+        .json({ error: "walletPubkey, zkProofId and positive amount are required" });
     }
 
     await client.query("BEGIN");
@@ -182,9 +206,6 @@ app.post("/api/deposits", async (req, res) => {
 /**
  * POST /api/withdrawals
  * body: { zkProofId, note, amount, recipient, txSignature? }
- *
- * Di sini walletPubkey tidak dipakai untuk auth;
- * pemilik dibuktikan lewat (zkProofId, note) pair.
  */
 app.post("/api/withdrawals", async (req, res) => {
   const client = await pool.connect();
@@ -305,7 +326,7 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
-// --- Start server ---
+// ---------- START SERVER ----------
 initDb()
   .then(() => {
     app.listen(PORT, () => {
