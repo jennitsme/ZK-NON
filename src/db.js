@@ -7,7 +7,7 @@ export const pool = new Pool({
 });
 
 export async function initDb() {
-  // Table komitmen ZK
+  // ZK proof commitments
   await pool.query(`
     CREATE TABLE IF NOT EXISTS zk_proofs (
       id SERIAL PRIMARY KEY,
@@ -20,7 +20,7 @@ export async function initDb() {
     );
   `);
 
-  // Log deposit / withdraw
+  // Deposits / withdrawals log
   await pool.query(`
     CREATE TABLE IF NOT EXISTS zk_transfers (
       id SERIAL PRIMARY KEY,
